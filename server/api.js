@@ -3,6 +3,7 @@ const store = require('./store');
 const { AppError } = require('./errors');
 const reservoirs = require('./reservoirs');
 const records = require('./records');
+const forecasts = require('./forecasts');
 const water = require('./water');
 const summary = require('./summary');
 
@@ -59,6 +60,16 @@ router.patch('/orders/:id', withData((data, req) => ({ __save: true, __body: rec
 router.post('/orders/:id/copy', withData((data, req) => ({ __save: true, __body: records.copyOrder(data, req.params.id, req.body) })));
 router.post('/orders/:id/attachments', withData((data, req) => ({ __save: true, __body: records.addAttachment(data, req.params.id, req.body || {}) })));
 router.delete('/orders/:id', withData((data, req) => ({ __save: true, __body: records.removeOrder(data, req.params.id) })));
+
+router.get('/forecasts', withData((data, req) => forecasts.list(data, req.query)));
+router.post('/forecasts', withData((data, req) => ({ __save: true, __body: forecasts.save(data, req.body || {}) })));
+router.get('/forecasts/timeline', withData((data, req) => forecasts.timeline(data, req.query)));
+// 调度建议是只读计算：GET 不落库，同一组预报重算结论一致
+router.get('/forecasts/suggest', withData((data, req) => {
+  if (!req.query.reservoirId) throw new AppError(400, 'INVALID_PAYLOAD', '请先选一个水库', { reservoirId: '请选水库' });
+  return forecasts.suggest(data, req.query.reservoirId);
+}));
+router.delete('/forecasts/:id', withData((data, req) => ({ __save: true, __body: forecasts.remove(data, req.params.id) })));
 
 router.get('/balance', withData((data, req) => {
   const { reservoirId, from, to } = req.query;

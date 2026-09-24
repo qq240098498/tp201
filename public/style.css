@@ -466,3 +466,6 @@ code {
   .layout { grid-template-columns: 1fr; }
   .sidebar { position: static; flex-direction: row; flex-wrap: wrap; }
 }
+
+/* 时间线行只是展示，没有展开动作 */
+#timelineTable tbody tr { cursor: default; }

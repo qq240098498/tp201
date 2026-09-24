@@ -25,6 +25,7 @@
   <button type="button" class="tab is-active" data-view="overview">概览</button>
   <button type="button" class="tab" data-view="reservoirs">水库</button>
   <button type="button" class="tab" data-view="water">水位与流量</button>
+  <button type="button" class="tab" data-view="forecast">来水预报</button>
   <button type="button" class="tab" data-view="orders">调度指令</button>
   <button type="button" class="tab" data-view="balance">水量平衡</button>
 </nav>
@@ -310,6 +311,118 @@
           </table>
         </div>
       </section>
+    </section>
+
+    <section class="view" data-view="forecast">
+      <div class="view-head">
+        <div>
+          <h2>来水预报</h2>
+          <p class="view-sub">预报按「水库 + 预报日期 + 预报时刻」登记一批未来几天的入库流量；时间线把实测与预报排在同一天上，偏差取 <code>实测 − 预报</code>；调度建议是只读计算，结论与算法都取自 <code>GET /api/forecasts/suggest</code>，不写任何数据，同一组预报重算结论一致。</p>
+        </div>
+        <div class="view-actions">
+          <span class="pill" id="forecastCount">共 0 批</span>
+          <button type="button" class="btn btn-ghost" data-action="reload" data-view="forecast">刷新</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>登记预报 <span class="card-sub">接口 <code>POST /api/forecasts</code>，同库同预报时刻重复登记会覆盖；只登记预报日期当天及以后的日期</span></h3>
+        <form id="forecastForm" novalidate>
+          <div class="form-grid">
+            <label class="field">
+              <span>水库</span>
+              <select name="reservoirId" id="forecastFormReservoir"></select>
+              <em class="field-msg" data-field-error="reservoirId" hidden></em>
+            </label>
+            <label class="field">
+              <span>预报日期</span>
+              <input type="date" name="issuedAt" id="forecastFormDate" />
+              <em class="field-msg" data-field-error="issuedAt" hidden></em>
+            </label>
+            <label class="field">
+              <span>预报时刻</span>
+              <input type="text" name="issuedTime" value="08:00" placeholder="08:00" />
+              <em class="field-msg" data-field-error="issuedTime" hidden></em>
+            </label>
+            <label class="field">
+              <span>预报人</span>
+              <input type="text" name="forecaster" placeholder="水文组" />
+              <em class="field-msg" data-field-error="forecaster" hidden></em>
+            </label>
+            <label class="field field-wide">
+              <span>预报依据</span>
+              <input type="text" name="basis" placeholder="省气象台降雨预报、区间来水估计…" />
+              <em class="field-msg" data-field-error="basis" hidden></em>
+            </label>
+          </div>
+          <h4>逐日预报流量 <span class="card-sub">未来几天一天一行，同一天只能有一行</span></h4>
+          <table class="mini-table">
+            <thead>
+              <tr><th>序号</th><th>日期</th><th>预报入库流量（m³/s）</th><th>校验提示</th><th>操作</th></tr>
+            </thead>
+            <tbody id="forecastItems"></tbody>
+          </table>
+          <em class="field-msg" data-field-error="items" hidden></em>
+          <div class="detail-actions">
+            <button type="button" class="btn btn-sm" data-action="add-forecast-item">增加一天</button>
+            <button type="submit" class="btn btn-primary">登记预报</button>
+          </div>
+        </form>
+        <div class="form-error" id="forecastFormError" hidden></div>
+      </div>
+
+      <div class="card">
+        <h3>实测与预报时间线 <span class="card-sub" id="timelineSub">接口 <code>GET /api/forecasts/timeline</code></span></h3>
+        <div class="detail-grid" id="timelineSummary"></div>
+        <div class="table-wrap">
+          <table class="table" id="timelineTable">
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th class="num">实测入库</th>
+                <th class="num">预报入库</th>
+                <th class="num">偏差（实测−预报）</th>
+                <th class="num">偏差率</th>
+                <th class="num">预见期（天）</th>
+                <th>采用的预报</th>
+              </tr>
+            </thead>
+            <tbody id="timelineRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>调度建议 <span class="card-sub">接口 <code>GET /api/forecasts/suggest</code>，只出结论不动数据，同一组预报重算结论一致</span></h3>
+        <div class="detail-actions">
+          <button type="button" class="btn btn-sm" data-action="calc-suggest">按当前水库重算建议</button>
+        </div>
+        <div id="suggestResult">
+          <p class="empty">正在计算…</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>预报清单 <span class="card-sub">接口 <code>GET /api/forecasts</code>，点行展开逐日明细与删除</span></h3>
+        <div class="table-wrap">
+          <table class="table" id="forecastTable">
+            <thead>
+              <tr>
+                <th>预报日期</th>
+                <th>时刻</th>
+                <th>水库</th>
+                <th>预报人</th>
+                <th class="num">天数</th>
+                <th>预报范围</th>
+                <th class="num">平均流量</th>
+                <th>依据</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="forecastRows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section class="view" data-view="orders">

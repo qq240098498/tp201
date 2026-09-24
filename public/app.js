@@ -6,7 +6,7 @@
 
   /* ================= 常量与工具 ================= */
 
-  var VIEW_IDS = ['overview', 'reservoirs', 'water', 'orders', 'balance'];
+  var VIEW_IDS = ['overview', 'reservoirs', 'water', 'forecast', 'orders', 'balance'];
   var ORDER_STATUSES = ['已下达', '执行中', '已完成', '已撤销'];
   var RESERVOIR_STATUSES = ['运行', '检修'];
 
@@ -44,6 +44,20 @@
   function todayIso() {
     var d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function addDays(iso, n) {
+    var d = new Date(iso + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /* 带符号的数字，偏差用：正数前面补 + */
+  function signedText(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    var n = Number(value);
+    if (!Number.isFinite(n)) return String(value);
+    return (n > 0 ? '+' : '') + String(n);
   }
 
   function queryString(params) {
@@ -127,8 +141,12 @@
     levels: [],
     flows: { inflow: [], release: [] },
     orders: [],
+    forecasts: [],
+    timeline: null,
+    suggest: null,
+    forecastDraft: null,
     balance: null,
-    expanded: { reservoir: '', level: '', flow: '', order: '' },
+    expanded: { reservoir: '', level: '', flow: '', order: '', forecast: '' },
     reservoirDetail: null,
     curveDraft: null,
     curveQuery: { reservoirId: '', byLevel: null, byCapacity: null },
@@ -136,6 +154,7 @@
       overview: { status: '' },
       reservoirs: { basin: '', status: '', keyword: '' },
       water: { reservoirId: '', from: '', to: '' },
+      forecast: { reservoirId: '', from: '', to: '' },
       orders: { reservoirId: '', status: '' },
       balance: { reservoirId: '', from: '2026-05-01', to: '2026-05-10' }
     }
@@ -193,6 +212,11 @@
         var row = qsa('[data-curve-row]')[Number(matched[1])];
         if (row) row.classList.add('is-invalid');
       }
+      var itemMatched = /^items\.(\d+)$/.exec(key);
+      if (itemMatched) {
+        var itemRow = qsa('[data-forecast-row]')[Number(itemMatched[1])];
+        if (itemRow) itemRow.classList.add('is-invalid');
+      }
     });
     return lines;
   }
@@ -240,6 +264,9 @@
       } else if (view === 'water') {
         await loadWaterRecords();
         renderWater();
+      } else if (view === 'forecast') {
+        await loadForecastData();
+        renderForecast();
       } else if (view === 'orders') {
         state.orders = await api('GET', '/api/orders' + ordersQuery());
         renderOrders();
@@ -349,6 +376,21 @@
       html.push('<button type="button" class="btn btn-ghost btn-sm" data-action="reset-filter" data-scope="water">重置筛选</button>');
       html.push('</div>');
       html.push('<div class="side-block"><h3>当前口径</h3><ul class="side-list" id="waterCounts">' + waterCountsHtml() + '</ul></div>');
+    } else if (view === 'forecast') {
+      html.push('<div class="side-block">');
+      html.push('<h3>筛选预报与对照</h3>');
+      html.push('<label class="field"><span>水库</span><select data-filter-key="reservoirId" data-filter-scope="forecast">' + reservoirOptions(f.reservoirId) + '</select></label>');
+      html.push('<label class="field"><span>起始日期</span><input type="date" data-filter-key="from" data-filter-scope="forecast" value="' + esc(f.from || '') + '" /></label>');
+      html.push('<label class="field"><span>结束日期</span><input type="date" data-filter-key="to" data-filter-scope="forecast" value="' + esc(f.to || '') + '" /></label>');
+      html.push('<button type="button" class="btn btn-ghost btn-sm" data-action="reset-filter" data-scope="forecast">重置筛选</button>');
+      html.push('</div>');
+      html.push('<div class="side-block"><h3>口径</h3><ul class="side-list">');
+      html.push('<li>同一日期多次预报取最新一批</li>');
+      html.push('<li>偏差 = 实测 − 预报</li>');
+      html.push('<li>建议只出结论，不写任何数据</li>');
+      html.push('<li>同一组预报重算结论一致（看输入指纹）</li>');
+      html.push('</ul></div>');
+      html.push('<div class="side-block"><h3>当前条数</h3><ul class="side-list" id="forecastCounts">' + forecastCountsHtml() + '</ul></div>');
     } else if (view === 'orders') {
       html.push('<div class="side-block">');
       html.push('<h3>筛选调度指令</h3>');
@@ -785,6 +827,269 @@
     tbody.innerHTML = html.join('');
   }
 
+  /* ================= 来水预报 ================= */
+
+  /* 时间线与调度建议都按「当前水库」算：侧栏选了就用侧栏的，没选用第一座 */
+  function forecastReservoirId() {
+    var picked = state.filters.forecast.reservoirId;
+    if (picked) return picked;
+    return state.reservoirs && state.reservoirs.length ? state.reservoirs[0].id : '';
+  }
+
+  async function loadForecastData() {
+    var f = state.filters.forecast;
+    state.forecasts = await api('GET', '/api/forecasts' + queryString({ reservoirId: f.reservoirId, from: f.from, to: f.to }));
+    var rid = forecastReservoirId();
+    if (rid) {
+      state.timeline = await api('GET', '/api/forecasts/timeline' + queryString({ reservoirId: rid, from: f.from, to: f.to }));
+      state.suggest = await api('GET', '/api/forecasts/suggest' + queryString({ reservoirId: rid }));
+    } else {
+      state.timeline = null;
+      state.suggest = null;
+    }
+  }
+
+  function forecastCountsHtml() {
+    var t = state.timeline;
+    return '<li>预报 ' + ((state.forecasts || []).length) + ' 批</li>'
+      + '<li>时间线 ' + (t && t.summary ? t.summary.days : 0) + ' 天</li>'
+      + '<li>有对照 ' + (t && t.summary ? t.summary.comparedDays : 0) + ' 天</li>';
+  }
+
+  function updateForecastCounts() {
+    var box = el('forecastCounts');
+    if (box) box.innerHTML = forecastCountsHtml();
+  }
+
+  function freshForecastDraft() {
+    var today = todayIso();
+    return {
+      reservoirId: forecastReservoirId(),
+      issuedAt: today,
+      issuedTime: '08:00',
+      forecaster: '',
+      basis: '',
+      items: [
+        { date: addDays(today, 1), flow: '' },
+        { date: addDays(today, 2), flow: '' },
+        { date: addDays(today, 3), flow: '' }
+      ]
+    };
+  }
+
+  function readForecastDraftFromDom() {
+    var form = el('forecastForm');
+    if (!form) return;
+    var values = formValues(form);
+    var draft = state.forecastDraft || freshForecastDraft();
+    draft.reservoirId = values.reservoirId || draft.reservoirId;
+    draft.issuedAt = values.issuedAt || '';
+    draft.issuedTime = values.issuedTime || '';
+    draft.forecaster = values.forecaster || '';
+    draft.basis = values.basis || '';
+    draft.items = qsa('#forecastItems tr[data-forecast-row]').map(function (tr) {
+      return {
+        date: qs('[data-forecast-field="date"]', tr).value,
+        flow: qs('[data-forecast-field="flow"]', tr).value
+      };
+    });
+    state.forecastDraft = draft;
+  }
+
+  function renderForecastItems() {
+    var tbody = el('forecastItems');
+    if (!tbody) return;
+    var draft = state.forecastDraft || freshForecastDraft();
+    state.forecastDraft = draft;
+    tbody.innerHTML = draft.items.map(function (item, index) {
+      return '<tr data-forecast-row="' + index + '">'
+        + '<td class="num">' + (index + 1) + '</td>'
+        + '<td><input type="date" data-forecast-field="date" value="' + esc(item.date) + '" /></td>'
+        + '<td><input type="number" step="0.01" data-forecast-field="flow" value="' + esc(item.flow) + '" placeholder="70" /></td>'
+        + '<td><em class="field-msg" data-field-error="items.' + index + '" hidden></em></td>'
+        + '<td><button type="button" class="btn btn-sm" data-action="remove-forecast-item" data-index="' + index + '">删掉这行</button></td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function renderForecast() {
+    renderForecastItems();
+    renderForecastList();
+    renderTimeline();
+    renderSuggest();
+    updateForecastCounts();
+  }
+
+  function renderForecastList() {
+    var rows = state.forecasts || [];
+    var tbody = el('forecastRows');
+    var colspan = columnCount('forecastRows');
+    el('forecastCount').textContent = '共 ' + rows.length + ' 批';
+    if (!rows.length) {
+      tbody.innerHTML = emptyRow(colspan, '还没有预报，先在上方「登记预报」里报一批。');
+      return;
+    }
+    var html = [];
+    rows.forEach(function (f) {
+      var expanded = state.expanded.forecast === f.id;
+      html.push('<tr class="forecast-row' + (expanded ? ' is-expanded' : '') + '" data-action="toggle-forecast" data-id="' + esc(f.id) + '">'
+        + '<td>' + esc(dash(f.issuedAt)) + '</td>'
+        + '<td>' + esc(dash(f.issuedTime)) + '</td>'
+        + '<td>' + esc(dash(f.reservoirName)) + '</td>'
+        + '<td>' + esc(dash(f.forecaster)) + '</td>'
+        + '<td class="num">' + esc(numText(f.itemCount)) + '</td>'
+        + '<td>' + esc(dash(f.dateStart)) + ' 至 ' + esc(dash(f.dateEnd)) + '</td>'
+        + '<td class="num">' + esc(numText(f.meanFlow)) + '</td>'
+        + '<td>' + esc(dash(f.basis)) + '</td>'
+        + '<td><span class="tag">展开</span></td>'
+        + '</tr>');
+      if (expanded) {
+        var itemRows = (f.items || []).map(function (it, index) {
+          return '<tr><td class="num">' + (index + 1) + '</td><td>' + esc(it.date) + '</td><td class="num">' + esc(numText(it.flow)) + '</td></tr>';
+        }).join('');
+        html.push('<tr class="detail-row" data-detail-for="' + esc(f.id) + '"><td colspan="' + colspan + '"><div class="detail">'
+          + '<div class="detail-grid">'
+          + itemHtml(['批次编号', f.id])
+          + itemHtml(['预报人', f.forecaster])
+          + itemHtml(['预报时刻', f.issuedAt + ' ' + f.issuedTime])
+          + itemHtml(['预报依据', f.basis])
+          + '</div>'
+          + '<h4>逐日预报流量</h4>'
+          + '<table class="mini-table"><thead><tr><th>序号</th><th>日期</th><th class="num">预报入库流量（m³/s）</th></tr></thead><tbody>' + itemRows + '</tbody></table>'
+          + '<div class="detail-actions">'
+          + '<button type="button" class="btn btn-sm" data-action="delete-forecast" data-id="' + esc(f.id) + '">删除这批预报</button>'
+          + '</div></div></td></tr>');
+      }
+    });
+    tbody.innerHTML = html.join('');
+  }
+
+  function renderTimeline() {
+    var tbody = el('timelineRows');
+    var colspan = columnCount('timelineRows');
+    var t = state.timeline;
+    if (!t) {
+      el('timelineSub').textContent = '先在侧栏选一个水库';
+      el('timelineSummary').innerHTML = '';
+      tbody.innerHTML = emptyRow(colspan, '先在侧栏选一个水库。');
+      return;
+    }
+    el('timelineSub').textContent = '水库 ' + t.reservoirName + '；同一日期多次预报取最新一批，偏差 = 实测 − 预报';
+    var s = t.summary || {};
+    el('timelineSummary').innerHTML = [
+      ['时间线天数', s.days],
+      ['有实测天数', s.measuredDays],
+      ['有预报天数', s.forecastDays],
+      ['可对照天数', s.comparedDays],
+      ['平均偏差（m³/s）', s.meanDeviation],
+      ['平均绝对偏差（m³/s）', s.meanAbsDeviation],
+      ['平均绝对偏差率（%）', s.meanAbsDeviationPct]
+    ].map(itemHtml).join('');
+    var rows = t.rows || [];
+    if (!rows.length) {
+      tbody.innerHTML = emptyRow(colspan, '这个时段既没有实测也没有预报。');
+      return;
+    }
+    tbody.innerHTML = rows.map(function (r) {
+      var usedForecast = r.forecastId
+        ? r.issuedAt + ' ' + r.issuedTime + ' ' + r.forecaster + '（' + r.forecastId + '）'
+        : '—';
+      return '<tr>'
+        + '<td>' + esc(r.date) + '</td>'
+        + '<td class="num">' + esc(numText(r.measured)) + '</td>'
+        + '<td class="num">' + esc(numText(r.forecast)) + '</td>'
+        + '<td class="num">' + esc(signedText(r.deviation)) + '</td>'
+        + '<td class="num">' + esc(r.deviationPct === null || r.deviationPct === undefined ? '—' : signedText(r.deviationPct) + '%') + '</td>'
+        + '<td class="num">' + esc(numText(r.leadDays)) + '</td>'
+        + '<td>' + esc(usedForecast) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function renderSuggest() {
+    var box = el('suggestResult');
+    var s = state.suggest;
+    if (!s) {
+      box.innerHTML = '<p class="empty">正在计算…</p>';
+      return;
+    }
+    var html = [];
+    if (!s.usable) {
+      html.push('<p class="empty">' + esc(s.reason) + '</p>');
+    } else {
+      var a = s.advice || {};
+      html.push('<div class="result-grid">'
+        + resultItem('建议下泄区间（m³/s）', a.releaseMin + ' ~ ' + a.releaseMax, true)
+        + resultItem('建议目标下泄（m³/s）', a.suggestedFlow)
+        + resultItem('建议指令条数', a.orderCount + ' 条（每天一条）', a.orderCount > 0)
+        + resultItem('时段末水位（按建议）', a.endLevelAtSuggested + ' m')
+        + resultItem('水位变化（按建议）', signedText(a.levelChangeAtSuggested) + ' m', Number(a.levelChangeAtSuggested) < 0)
+        + resultItem('不泄流时段末水位', a.endLevelNoRelease + ' m')
+        + '</div>');
+    }
+    if (s.current) {
+      html.push('<h4>当前水情（接口字段）</h4><div class="detail-grid">'
+        + itemHtml(['水位日期', s.current.levelDate])
+        + itemHtml(['当前水位', s.current.level + ' m'])
+        + itemHtml(['限水位', s.current.limit + ' m'])
+        + itemHtml(['是否汛期', yesNo(s.current.floodSeason)])
+        + itemHtml(['超出限水位', signedText(s.current.overLimitLevel) + ' m'])
+        + '</div>');
+    }
+    if (s.storage) {
+      html.push('<h4>库容账（万m³，接口字段）</h4><div class="detail-grid">'
+        + itemHtml(['当前库容', s.storage.currentWan])
+        + itemHtml(['限水位对应库容', s.storage.limitWan])
+        + itemHtml(['死水位对应库容', s.storage.deadWan])
+        + itemHtml(['压回限水位需腾出', s.storage.overLimitWan])
+        + itemHtml(['可腾至死水位', s.storage.freeableToDeadWan])
+        + '</div>');
+    }
+    if (s.forecast && s.forecast.days) {
+      var batches = (s.forecast.batchesUsed || []).map(function (b) {
+        return '<li>' + esc(b.id) + '：' + esc(b.issuedAt) + ' ' + esc(b.issuedTime) + ' ' + esc(b.forecaster)
+          + '，依据「' + esc(b.basis) + '」，覆盖 ' + esc(b.dates.join('、')) + '</li>';
+      }).join('');
+      html.push('<h4>采用的预报（接口字段）</h4><div class="detail-grid">'
+        + itemHtml(['覆盖天数', s.forecast.days])
+        + itemHtml(['日期范围', s.forecast.dateStart + ' 至 ' + s.forecast.dateEnd])
+        + itemHtml(['平均入库流量', s.forecast.meanInflow + ' m³/s'])
+        + itemHtml(['入库水量', s.forecast.inflowVolumeWan + ' 万m³'])
+        + itemHtml(['损失水量', s.forecast.lossVolumeWan + ' 万m³'])
+        + '</div>'
+        + '<ul class="attach-list">' + batches + '</ul>');
+    }
+    if (s.algorithm && s.algorithm.length) {
+      html.push('<h4>算法与依据（一行行写出来，数字全部取接口字段）</h4><ul class="caliber">'
+        + s.algorithm.map(function (line) { return '<li>' + esc(line) + '</li>'; }).join('')
+        + '</ul>');
+    }
+    html.push('<p class="side-note">输入指纹 <b>' + esc(s.inputHash || '') + '</b>（计算日 ' + esc(s.computedOn || '') + '）：本建议只出结论、不写任何数据；同一组预报与水位重算，指纹与结论必然一致。</p>');
+    box.innerHTML = html.join('');
+  }
+
+  async function submitForecast(form) {
+    var errorBox = el('forecastFormError');
+    clearFormError(errorBox);
+    readForecastDraftFromDom();
+    var d = state.forecastDraft;
+    try {
+      var result = await api('POST', '/api/forecasts', {
+        reservoirId: d.reservoirId,
+        issuedAt: d.issuedAt,
+        issuedTime: d.issuedTime,
+        forecaster: d.forecaster,
+        basis: d.basis,
+        items: d.items.map(function (it) { return { date: it.date, flow: Number(it.flow) }; })
+      });
+      toast(result && result.updated ? '同库同时刻的预报已覆盖更新' : '预报已登记');
+      state.forecastDraft = freshForecastDraft();
+      await reloadView('forecast');
+    } catch (err) {
+      showError(err, errorBox);
+    }
+  }
+
   /* ================= 水量平衡 ================= */
 
   function resultItem(label, value, accent) {
@@ -1062,6 +1367,46 @@
     if (action === 'toggle-level') { toggleRow('level', btn.dataset.id); renderWater(); return; }
     if (action === 'toggle-flow') { toggleRow('flow', btn.dataset.kind + ':' + btn.dataset.id); renderWater(); return; }
     if (action === 'toggle-order') { toggleRow('order', btn.dataset.id); renderOrders(); return; }
+    if (action === 'toggle-forecast') {
+      state.expanded.forecast = state.expanded.forecast === btn.dataset.id ? '' : btn.dataset.id;
+      renderForecastList();
+      return;
+    }
+
+    if (action === 'add-forecast-item') {
+      readForecastDraftFromDom();
+      var items = state.forecastDraft.items;
+      var lastDate = items.length && items[items.length - 1].date ? items[items.length - 1].date : todayIso();
+      items.push({ date: addDays(lastDate, 1), flow: '' });
+      renderForecastItems();
+      return;
+    }
+    if (action === 'remove-forecast-item') {
+      readForecastDraftFromDom();
+      state.forecastDraft.items.splice(Number(btn.dataset.index), 1);
+      renderForecastItems();
+      return;
+    }
+    if (action === 'delete-forecast') {
+      if (!armDelete(btn)) return;
+      try {
+        await api('DELETE', '/api/forecasts/' + encodeURIComponent(btn.dataset.id));
+        state.expanded.forecast = '';
+        toast('预报已删除');
+        await reloadView('forecast');
+      } catch (err) { showError(err); }
+      return;
+    }
+    if (action === 'calc-suggest') {
+      var rid = forecastReservoirId();
+      if (!rid) { showNotice('先登记一座水库', true); return; }
+      try {
+        state.suggest = await api('GET', '/api/forecasts/suggest' + queryString({ reservoirId: rid }));
+        renderSuggest();
+        toast('建议已重算，可与上次的输入指纹对照');
+      } catch (err) { showError(err); }
+      return;
+    }
 
     if (action === 'delete-level') {
       if (!armDelete(btn)) return;
@@ -1228,6 +1573,11 @@
       if (row.classList.contains('level-row')) { toggleRow('level', row.dataset.id); renderWater(); return; }
       if (row.classList.contains('flow-row')) { toggleRow('flow', row.dataset.kind + ':' + row.dataset.id); renderWater(); return; }
       if (row.classList.contains('order-row')) { toggleRow('order', row.dataset.id); renderOrders(); return; }
+      if (row.classList.contains('forecast-row')) {
+        state.expanded.forecast = state.expanded.forecast === row.dataset.id ? '' : row.dataset.id;
+        renderForecastList();
+        return;
+      }
     });
 
     document.addEventListener('change', function (event) {
@@ -1244,6 +1594,7 @@
       }
       if (scope === 'orders') { reloadView('orders'); return; }
       if (scope === 'water') { reloadView('water').then(updateWaterCounts); return; }
+      if (scope === 'forecast') { reloadView('forecast'); return; }
       if (scope === 'balance') { renderBalance(); }
     });
 
@@ -1267,6 +1618,7 @@
     el('levelForm').addEventListener('submit', function (event) { event.preventDefault(); submitLevel(event.target); });
     el('inflowForm').addEventListener('submit', function (event) { event.preventDefault(); submitFlow(event.target, 'inflow'); });
     el('releaseForm').addEventListener('submit', function (event) { event.preventDefault(); submitFlow(event.target, 'release'); });
+    el('forecastForm').addEventListener('submit', function (event) { event.preventDefault(); submitForecast(event.target); });
     el('orderForm').addEventListener('submit', function (event) { event.preventDefault(); submitOrder(event.target); });
     el('balanceForm').addEventListener('submit', function (event) { event.preventDefault(); submitBalance(event.target); });
   }
@@ -1275,7 +1627,7 @@
 
   function fillReservoirSelects() {
     var list = state.reservoirs || [];
-    ['levelFormReservoir', 'inflowFormReservoir', 'releaseFormReservoir', 'orderFormReservoir', 'balanceReservoir'].forEach(function (id) {
+    ['levelFormReservoir', 'inflowFormReservoir', 'releaseFormReservoir', 'orderFormReservoir', 'balanceReservoir', 'forecastFormReservoir'].forEach(function (id) {
       var node = el(id);
       if (!node) return;
       var current = node.value;
@@ -1290,6 +1642,8 @@
     if (inflowDate && !inflowDate.value) inflowDate.value = todayIso();
     var releaseDate = el('releaseFormDate');
     if (releaseDate && !releaseDate.value) releaseDate.value = todayIso();
+    var forecastDate = el('forecastFormDate');
+    if (forecastDate && !forecastDate.value) forecastDate.value = todayIso();
 
     var orderForm = el('orderForm');
     if (orderForm) {
@@ -1330,6 +1684,7 @@
       state.flows.inflow = await api('GET', '/api/flows?kind=inflow');
       state.flows.release = await api('GET', '/api/flows?kind=release');
       state.orders = await api('GET', '/api/orders');
+      await loadForecastData();
     } catch (err) {
       showError(err);
     }
@@ -1340,6 +1695,7 @@
     renderOverview();
     renderReservoirs();
     renderWater();
+    renderForecast();
     renderOrders();
     renderBalance();
   }

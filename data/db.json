@@ -1227,6 +1227,15 @@
       "type": "实测",
       "operator": "值班员",
       "remark": ""
+    },
+    {
+      "id": "in-0058",
+      "reservoirId": "res-0001",
+      "date": "2026-09-24",
+      "flow": 0,
+      "type": "实测",
+      "operator": "",
+      "remark": ""
     }
   ],
   "releases": [
@@ -1816,6 +1825,70 @@
           "name": "撤销说明",
           "note": "来电撤销",
           "at": "2026-05-05"
+        }
+      ]
+    }
+  ],
+  "forecasts": [
+    {
+      "id": "fc-0001",
+      "reservoirId": "res-0001",
+      "issuedAt": "2026-09-16",
+      "issuedTime": "08:00",
+      "forecaster": "水文组小王",
+      "basis": "省气象台 09-16 降雨预报：流域未来 3 天小到中雨",
+      "items": [
+        {
+          "date": "2026-09-17",
+          "flow": 70
+        },
+        {
+          "date": "2026-09-18",
+          "flow": 72
+        },
+        {
+          "date": "2026-09-19",
+          "flow": 68
+        }
+      ]
+    },
+    {
+      "id": "fc-0002",
+      "reservoirId": "res-0001",
+      "issuedAt": "2026-09-23",
+      "issuedTime": "08:00",
+      "forecaster": "水文组小王",
+      "basis": "省气象台 09-23 降雨预报：流域未来 3 天中雨，局部大雨",
+      "items": [
+        {
+          "date": "2026-09-24",
+          "flow": 75
+        },
+        {
+          "date": "2026-09-25",
+          "flow": 80
+        },
+        {
+          "date": "2026-09-26",
+          "flow": 70
+        }
+      ]
+    },
+    {
+      "id": "fc-0003",
+      "reservoirId": "res-0002",
+      "issuedAt": "2026-09-23",
+      "issuedTime": "08:00",
+      "forecaster": "老李",
+      "basis": "区间来水经验估计",
+      "items": [
+        {
+          "date": "2026-09-24",
+          "flow": 48
+        },
+        {
+          "date": "2026-09-25",
+          "flow": 50
         }
       ]
     }
