@@ -401,6 +401,32 @@ code {
 .caliber li { margin-bottom: 4px; }
 .caliber b { color: var(--ink); }
 
+/* ---------- 调度建议 ---------- */
+.conclusion {
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  background: var(--indigo-soft);
+  border: 1px solid #c3cdf0;
+  border-left: 4px solid var(--indigo);
+  border-radius: var(--radius);
+  color: var(--indigo-deep);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.check-line { margin: 0 0 10px; font-size: 12px; padding: 6px 10px; border-radius: var(--radius); }
+.check-line.is-ok { background: var(--green-soft); border: 1px solid #bcd8c6; color: #24513a; }
+.check-line.is-bad { background: var(--orange-soft); border: 1px solid #eec3b4; color: #8d3315; }
+
+.suggestion-result h4 {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  color: var(--indigo-deep);
+  border-left: 3px solid var(--indigo);
+  padding-left: 6px;
+}
+.suggestion-result .mini-table { margin-bottom: 4px; }
+
 /* ---------- 弹层 ---------- */
 .modal-mask {
   display: flex;

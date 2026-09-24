@@ -6,7 +6,7 @@
 
   /* ================= 常量与工具 ================= */
 
-  var VIEW_IDS = ['overview', 'reservoirs', 'water', 'orders', 'balance'];
+  var VIEW_IDS = ['overview', 'reservoirs', 'water', 'forecast', 'orders', 'balance'];
   var ORDER_STATUSES = ['已下达', '执行中', '已完成', '已撤销'];
   var RESERVOIR_STATUSES = ['运行', '检修'];
 
@@ -128,7 +128,10 @@
     flows: { inflow: [], release: [] },
     orders: [],
     balance: null,
-    expanded: { reservoir: '', level: '', flow: '', order: '' },
+    timeline: [],
+    suggestion: null,
+    suggestionCheck: null,
+    expanded: { reservoir: '', level: '', flow: '', order: '', forecast: '' },
     reservoirDetail: null,
     curveDraft: null,
     curveQuery: { reservoirId: '', byLevel: null, byCapacity: null },
@@ -136,6 +139,7 @@
       overview: { status: '' },
       reservoirs: { basin: '', status: '', keyword: '' },
       water: { reservoirId: '', from: '', to: '' },
+      forecast: { reservoirId: '', from: '', to: '' },
       orders: { reservoirId: '', status: '' },
       balance: { reservoirId: '', from: '2026-05-01', to: '2026-05-10' }
     }
@@ -240,6 +244,9 @@
       } else if (view === 'water') {
         await loadWaterRecords();
         renderWater();
+      } else if (view === 'forecast') {
+        await loadForecastData();
+        renderForecast();
       } else if (view === 'orders') {
         state.orders = await api('GET', '/api/orders' + ordersQuery());
         renderOrders();
@@ -349,6 +356,20 @@
       html.push('<button type="button" class="btn btn-ghost btn-sm" data-action="reset-filter" data-scope="water">重置筛选</button>');
       html.push('</div>');
       html.push('<div class="side-block"><h3>当前口径</h3><ul class="side-list" id="waterCounts">' + waterCountsHtml() + '</ul></div>');
+    } else if (view === 'forecast') {
+      html.push('<div class="side-block">');
+      html.push('<h3>筛选时间线</h3>');
+      html.push('<label class="field"><span>水库</span><select data-filter-key="reservoirId" data-filter-scope="forecast">' + reservoirOptions(f.reservoirId) + '</select></label>');
+      html.push('<label class="field"><span>起始日期</span><input type="date" data-filter-key="from" data-filter-scope="forecast" value="' + esc(f.from || '') + '" /></label>');
+      html.push('<label class="field"><span>结束日期</span><input type="date" data-filter-key="to" data-filter-scope="forecast" value="' + esc(f.to || '') + '" /></label>');
+      html.push('<button type="button" class="btn btn-ghost btn-sm" data-action="reset-filter" data-scope="forecast">重置筛选</button>');
+      html.push('</div>');
+      html.push('<div class="side-block"><h3>口径</h3><ul class="side-list">');
+      html.push('<li>偏差 = 实测 − 预报（正 = 实测比预报大）</li>');
+      html.push('<li>同一目标日期取预报时刻最新的一份对照</li>');
+      html.push('<li>建议只读计算，不动数据</li>');
+      html.push('<li>同一组预报重算，结论与输入指纹一致</li>');
+      html.push('</ul></div>');
     } else if (view === 'orders') {
       html.push('<div class="side-block">');
       html.push('<h3>筛选调度指令</h3>');
@@ -785,6 +806,229 @@
     tbody.innerHTML = html.join('');
   }
 
+  /* ================= 来水预报 ================= */
+
+  async function loadForecastData() {
+    var f = state.filters.forecast;
+    state.timeline = await api('GET', '/api/forecasts/timeline' + queryString({ reservoirId: f.reservoirId, from: f.from, to: f.to }));
+  }
+
+  function forecastStatusTag(status) {
+    var cls = 'tag';
+    if (status === '已应验') cls = 'tag is-ok';
+    else if (status === '待应验') cls = 'tag is-strong';
+    return '<span class="' + cls + '">' + esc(dash(status)) + '</span>';
+  }
+
+  function renderForecast() {
+    var tbody = el('forecastTimelineRows');
+    var colspan = columnCount('forecastTimelineRows');
+    var rows = state.timeline || [];
+    if (!rows.length) {
+      tbody.innerHTML = emptyRow(colspan, '这段时间还没有实测或预报记录。');
+      renderSuggestion();
+      return;
+    }
+    var html = [];
+    rows.forEach(function (row) {
+      var key = row.reservoirId + '|' + row.date;
+      var expanded = state.expanded.forecast === key;
+      html.push('<tr class="forecast-row' + (expanded ? ' is-expanded' : '') + '" data-action="toggle-forecast" data-key="' + esc(key) + '">'
+        + '<td>' + esc(dash(row.date)) + '</td>'
+        + '<td>' + esc(dash(row.reservoirName)) + '</td>'
+        + '<td class="num">' + esc(numText(row.measuredFlow)) + '</td>'
+        + '<td class="num">' + esc(row.forecast ? numText(row.forecast.flow) : '—') + '</td>'
+        + '<td class="num">' + esc(numText(row.deviation)) + '</td>'
+        + '<td class="num">' + esc(row.deviationPct === null || row.deviationPct === undefined ? '—' : row.deviationPct + '%') + '</td>'
+        + '<td>' + forecastStatusTag(row.status) + '</td>'
+        + '<td><span class="tag">展开</span></td>'
+        + '</tr>');
+      if (expanded) {
+        var f = row.forecast || {};
+        var items = [
+          ['日期', row.date],
+          ['水库', row.reservoirName],
+          ['实测流量（接口）', row.measuredFlow],
+          ['实测对应水量（接口）', row.measuredVolumeWan],
+          ['预报流量（接口）', row.forecast ? row.forecast.flow : ''],
+          ['偏差（实测−预报，接口）', row.deviation],
+          ['偏差%（接口）', row.deviationPct],
+          ['状态（接口）', row.status],
+          ['预报编号', f.id || ''],
+          ['预报时刻', f.id ? f.issuedAt + ' ' + f.issuedTime : ''],
+          ['预报人', f.forecaster || ''],
+          ['预报依据', f.basis || ''],
+          ['该日预报份数', row.forecastCount],
+          ['预报备注', f.remark || '']
+        ];
+        html.push('<tr class="detail-row" data-detail-for="' + esc(key) + '"><td colspan="' + colspan + '"><div class="detail">'
+          + '<div class="detail-grid">' + items.map(itemHtml).join('') + '</div>'
+          + (row.forecast
+            ? '<div class="detail-actions"><button type="button" class="btn btn-sm" data-action="delete-forecast" data-id="' + esc(row.forecast.id) + '">删除这条预报</button></div>'
+            : '<p class="empty">这一天没有预报，没什么可删的。</p>')
+          + '</div></td></tr>');
+      }
+    });
+    tbody.innerHTML = html.join('');
+    renderSuggestion();
+  }
+
+  /* 调度建议：所有数字直接显示接口字段，前端不重算 */
+  function renderSuggestion() {
+    var box = el('suggestionResult');
+    var s = state.suggestion;
+    if (!s) {
+      box.innerHTML = '<p class="empty">先选水库，再点「计算建议」。</p>';
+      return;
+    }
+    var a = s.anchor || {};
+    var h = s.horizon || {};
+    var st = s.storage || {};
+    var req = s.required || {};
+    var imp = s.impact || {};
+    var range = s.range || {};
+    var orders = s.orders || { count: 0, segments: [] };
+
+    var checkLine = '';
+    if (state.suggestionCheck === 'same') {
+      checkLine = '<p class="check-line is-ok">连算两次核对：两次返回完全一致（输入指纹 ' + esc(s.inputFingerprint) + '）。</p>';
+    } else if (state.suggestionCheck === 'different') {
+      checkLine = '<p class="check-line is-bad">连算两次核对：两次返回不一致，请检查后台数据是否在两次计算之间被改动。</p>';
+    }
+
+    var segmentRows = (orders.segments || []).map(function (seg, index) {
+      return '<tr><td class="num">' + (index + 1) + '</td><td>' + esc(seg.from) + ' 至 ' + esc(seg.to) + '</td>'
+        + '<td class="num">' + esc(seg.days) + '</td><td class="num">' + esc(seg.flow) + '</td></tr>';
+    }).join('');
+
+    var forecastRows = (h.usedForecasts || []).map(function (f) {
+      return '<tr><td>' + esc(f.date) + '</td><td class="num">' + esc(f.flow) + '</td>'
+        + '<td>' + esc(f.issuedAt + ' ' + f.issuedTime) + '</td><td>' + esc(f.forecaster) + '</td><td>' + esc(f.basis) + '</td></tr>';
+    }).join('');
+
+    var dailyRows = (s.daily || []).map(function (d) {
+      return '<tr><td>' + esc(d.date) + '</td><td class="num">' + esc(d.inflowFlow) + '</td>'
+        + '<td class="num">' + esc(d.limit) + '</td><td class="num">' + esc(d.releaseFlow) + '</td>'
+        + '<td class="num">' + esc(d.endCapacity) + '</td><td class="num">' + esc(d.endLevel) + '</td></tr>';
+    }).join('');
+
+    box.innerHTML = '<div class="conclusion">' + esc(s.conclusion) + '</div>'
+      + checkLine
+      + '<h4>锚定与预报期（全部取接口字段）</h4>'
+      + '<div class="detail-grid">'
+      + itemHtml(['当前水位', a.level + ' m（' + a.date + ' ' + (a.time || '') + '）'])
+      + itemHtml(['当前库容', a.capacity + ' 万m³'])
+      + itemHtml(['当前限水位', a.limit + ' m（' + a.limitName + '）'])
+      + itemHtml(['是否超限', yesNo(a.exceeded)])
+      + itemHtml(['预报期', (h.from || '—') + ' 至 ' + (h.to || '—')])
+      + itemHtml(['预报期天数', h.days])
+      + itemHtml(['采用预报份数', h.forecastDays])
+      + itemHtml(['缺报天数', (h.missingDays || []).length])
+      + '</div>'
+      + '<h4>建议结论（接口字段原样显示）</h4>'
+      + '<div class="result-grid">'
+      + resultItem('建议下泄区间（m³/s）', range.low + ' ～ ' + range.high, true)
+      + resultItem('压到限水位所需恒定流量（m³/s）', req.constantFlow)
+      + resultItem('全程需泄水量（万m³）', req.releaseVolumeWan)
+      + resultItem('全程平均下泄（m³/s）', req.meanFlow)
+      + resultItem('压到限水位可腾库容（万m³）', st.freeableToLimit)
+      + resultItem('极限腾库（到死水位，万m³）', st.freeableToDead)
+      + resultItem('建议指令条数', orders.count, true)
+      + resultItem('期末水位（m）', imp.endLevel)
+      + resultItem('水位变化（m）', imp.levelChange, imp.levelChange < 0)
+      + resultItem('期最高水位（m）', imp.maxLevel + '（' + (imp.maxLevelDate || '—') + '）')
+      + resultItem('期末腾出库容（万m³）', imp.freedCapacityWan)
+      + resultItem('全程不超限', imp.staysUnderLimit === true ? '是' : (imp.staysUnderLimit === false ? '否' : '—'), imp.staysUnderLimit === false)
+      + '</div>'
+      + (s.notes && s.notes.length
+        ? '<h4>备注</h4><ul class="caliber">' + s.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>'
+        : '')
+      + '<h4>建议指令分段 <span class="card-sub">相邻且流量相同的天合并成一条，共 ' + orders.count + ' 条</span></h4>'
+      + (segmentRows
+        ? '<table class="mini-table"><thead><tr><th>序号</th><th>时段</th><th class="num">天数</th><th class="num">目标下泄流量（m³/s）</th></tr></thead><tbody>' + segmentRows + '</tbody></table>'
+        : '<p class="empty">不需要泄流指令。</p>')
+      + '<h4>采用的预报 <span class="card-sub">同一目标日期取预报时刻最新的一份</span></h4>'
+      + (forecastRows
+        ? '<table class="mini-table"><thead><tr><th>目标日期</th><th class="num">预报流量</th><th>预报时刻</th><th>预报人</th><th>依据</th></tr></thead><tbody>' + forecastRows + '</tbody></table>'
+        : '<p class="empty">预报期内没有预报。</p>')
+      + '<h4>逐日演算明细 <span class="card-sub">接口 <code>daily</code> 字段</span></h4>'
+      + (dailyRows
+        ? '<table class="mini-table"><thead><tr><th>日期</th><th class="num">预报入库</th><th class="num">限水位</th><th class="num">建议下泄</th><th class="num">当末库容</th><th class="num">当末水位</th></tr></thead><tbody>' + dailyRows + '</tbody></table>'
+        : '<p class="empty">没有演算明细。</p>')
+      + '<h4>算法与依据（接口 <code>algorithm</code> 逐条列出）</h4>'
+      + '<ul class="caliber">' + (s.algorithm || []).map(function (line) { return '<li>' + esc(line) + '</li>'; }).join('') + '</ul>'
+      + '<h4>确定性</h4>'
+      + '<div class="detail-grid">'
+      + itemHtml(['输入指纹（接口）', s.inputFingerprint])
+      + itemHtml(['计算方式', '只读 GET，不写数据'])
+      + '</div>';
+  }
+
+  async function submitForecast(form) {
+    var errorBox = el('forecastFormError');
+    clearFormError(errorBox);
+    var values = formValues(form);
+    try {
+      var result = await api('POST', '/api/forecasts', {
+        reservoirId: values.reservoirId,
+        date: values.date,
+        flow: Number(values.flow),
+        issuedAt: values.issuedAt,
+        issuedTime: values.issuedTime,
+        forecaster: values.forecaster,
+        basis: values.basis,
+        remark: values.remark
+      });
+      toast(result && result.updated ? '同时刻那份预报已更新' : '预报已登记');
+      await loadForecastData();
+      renderForecast();
+    } catch (err) {
+      showError(err, errorBox);
+    }
+  }
+
+  async function computeSuggestion() {
+    var errorBox = el('suggestionFormError');
+    clearFormError(errorBox);
+    var reservoirId = el('suggestionReservoir').value;
+    if (!reservoirId) {
+      showNotice('请先选一个水库', true);
+      return;
+    }
+    try {
+      state.suggestion = await api('GET', '/api/dispatch/suggestion' + queryString({ reservoirId: reservoirId }));
+      state.suggestionCheck = null;
+      renderSuggestion();
+      toast('建议已算出（只读，未动数据）');
+    } catch (err) {
+      state.suggestion = null;
+      state.suggestionCheck = null;
+      renderSuggestion();
+      showError(err, errorBox);
+    }
+  }
+
+  /* 同一组预报连着算两次，两次返回必须完全一致 */
+  async function checkSuggestionTwice() {
+    var errorBox = el('suggestionFormError');
+    clearFormError(errorBox);
+    var reservoirId = el('suggestionReservoir').value;
+    if (!reservoirId) {
+      showNotice('请先选一个水库', true);
+      return;
+    }
+    try {
+      var first = await api('GET', '/api/dispatch/suggestion' + queryString({ reservoirId: reservoirId }));
+      var second = await api('GET', '/api/dispatch/suggestion' + queryString({ reservoirId: reservoirId }));
+      state.suggestion = second;
+      state.suggestionCheck = JSON.stringify(first) === JSON.stringify(second) ? 'same' : 'different';
+      renderSuggestion();
+      toast(state.suggestionCheck === 'same' ? '两次结论一致' : '两次结论不一致', state.suggestionCheck !== 'same');
+    } catch (err) {
+      showError(err, errorBox);
+    }
+  }
+
   /* ================= 水量平衡 ================= */
 
   function resultItem(label, value, accent) {
@@ -1062,6 +1306,21 @@
     if (action === 'toggle-level') { toggleRow('level', btn.dataset.id); renderWater(); return; }
     if (action === 'toggle-flow') { toggleRow('flow', btn.dataset.kind + ':' + btn.dataset.id); renderWater(); return; }
     if (action === 'toggle-order') { toggleRow('order', btn.dataset.id); renderOrders(); return; }
+    if (action === 'toggle-forecast') {
+      state.expanded.forecast = state.expanded.forecast === btn.dataset.key ? '' : btn.dataset.key;
+      renderForecast();
+      return;
+    }
+    if (action === 'delete-forecast') {
+      if (!armDelete(btn)) return;
+      try {
+        await api('DELETE', '/api/forecasts/' + encodeURIComponent(btn.dataset.id));
+        state.expanded.forecast = '';
+        toast('预报已删除');
+        await reloadView('forecast');
+      } catch (err) { showError(err); }
+      return;
+    }
 
     if (action === 'delete-level') {
       if (!armDelete(btn)) return;
@@ -1244,6 +1503,7 @@
       }
       if (scope === 'orders') { reloadView('orders'); return; }
       if (scope === 'water') { reloadView('water').then(updateWaterCounts); return; }
+      if (scope === 'forecast') { reloadView('forecast'); return; }
       if (scope === 'balance') { renderBalance(); }
     });
 
@@ -1269,13 +1529,16 @@
     el('releaseForm').addEventListener('submit', function (event) { event.preventDefault(); submitFlow(event.target, 'release'); });
     el('orderForm').addEventListener('submit', function (event) { event.preventDefault(); submitOrder(event.target); });
     el('balanceForm').addEventListener('submit', function (event) { event.preventDefault(); submitBalance(event.target); });
+    el('forecastForm').addEventListener('submit', function (event) { event.preventDefault(); submitForecast(event.target); });
+    el('suggestionForm').addEventListener('submit', function (event) { event.preventDefault(); computeSuggestion(); });
+    el('suggestionCheckBtn').addEventListener('click', function () { checkSuggestionTwice(); });
   }
 
   /* ================= 下拉与默认值 ================= */
 
   function fillReservoirSelects() {
     var list = state.reservoirs || [];
-    ['levelFormReservoir', 'inflowFormReservoir', 'releaseFormReservoir', 'orderFormReservoir', 'balanceReservoir'].forEach(function (id) {
+    ['levelFormReservoir', 'inflowFormReservoir', 'releaseFormReservoir', 'orderFormReservoir', 'balanceReservoir', 'forecastFormReservoir', 'suggestionReservoir'].forEach(function (id) {
       var node = el(id);
       if (!node) return;
       var current = node.value;
@@ -1290,6 +1553,11 @@
     if (inflowDate && !inflowDate.value) inflowDate.value = todayIso();
     var releaseDate = el('releaseFormDate');
     if (releaseDate && !releaseDate.value) releaseDate.value = todayIso();
+
+    var forecastDate = el('forecastFormDate');
+    if (forecastDate && !forecastDate.value) forecastDate.value = todayIso();
+    var forecastIssued = el('forecastFormIssuedAt');
+    if (forecastIssued && !forecastIssued.value) forecastIssued.value = todayIso();
 
     var orderForm = el('orderForm');
     if (orderForm) {
@@ -1330,6 +1598,7 @@
       state.flows.inflow = await api('GET', '/api/flows?kind=inflow');
       state.flows.release = await api('GET', '/api/flows?kind=release');
       state.orders = await api('GET', '/api/orders');
+      await loadForecastData();
     } catch (err) {
       showError(err);
     }
@@ -1340,6 +1609,7 @@
     renderOverview();
     renderReservoirs();
     renderWater();
+    renderForecast();
     renderOrders();
     renderBalance();
   }

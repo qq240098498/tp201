@@ -33,7 +33,7 @@ function capacityAt(curve, level, settings) {
   return result(Number(points[points.length - 1].capacity));
 }
 
-// 由库容反查水位：同样按曲线分段反解
+// 由库容反查水位：同样按曲线分段反解（与 capacityAt 同一条分段曲线，两个方向对得上）
 function levelAt(curve, capacity) {
   const points = sortedPoints(curve);
   const digits = 2;
@@ -41,20 +41,26 @@ function levelAt(curve, capacity) {
   if (!points.length) return 0;
   if (target <= Number(points[0].capacity)) return store.round(Number(points[0].level), digits);
   if (target >= Number(points[points.length - 1].capacity)) return store.round(Number(points[points.length - 1].level), digits);
-  const first = points[0];
-  const last = points[points.length - 1];
-  const ratio = (target - Number(first.capacity)) / (Number(last.capacity) - Number(first.capacity));
-  return store.round(Number(first.level) + ratio * (Number(last.level) - Number(first.level)), digits);
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const low = points[i];
+    const high = points[i + 1];
+    if (target >= Number(low.capacity) && target <= Number(high.capacity)) {
+      const ratio = (target - Number(low.capacity)) / (Number(high.capacity) - Number(low.capacity));
+      return store.round(Number(low.level) + ratio * (Number(high.level) - Number(low.level)), digits);
+    }
+  }
+  return store.round(Number(points[points.length - 1].level), digits);
 }
 
-// 汛期判断与限水位
+// 汛期判断与限水位：按日期判断（floodSeasonStart 到 floodSeasonEnd，含两端；支持跨年汛期）
 function inFloodSeason(dateStr, settings) {
   const parts = String(dateStr || '').split('-');
   if (parts.length !== 3) return false;
-  const month = Number(parts[1]);
-  const startMonth = Number(String(settings.floodSeasonStart).split('-')[0]);
-  const endMonth = Number(String(settings.floodSeasonEnd).split('-')[0]);
-  return month >= startMonth && month <= endMonth;
+  const mmdd = String(parts[1]).padStart(2, '0') + '-' + String(parts[2]).padStart(2, '0');
+  const start = String(settings.floodSeasonStart);
+  const end = String(settings.floodSeasonEnd);
+  if (start <= end) return mmdd >= start && mmdd <= end;
+  return mmdd >= start || mmdd <= end;
 }
 
 function limitLevelOf(reservoir, dateStr, settings) {

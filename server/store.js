@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = {
 function normalize(raw) {
   const data = raw && typeof raw === 'object' ? raw : {};
   data.settings = Object.assign({}, DEFAULT_SETTINGS, data.settings || {});
-  for (const key of ['reservoirs', 'curves', 'levels', 'inflows', 'releases', 'orders']) {
+  for (const key of ['reservoirs', 'curves', 'levels', 'inflows', 'releases', 'orders', 'forecasts']) {
     if (!Array.isArray(data[key])) data[key] = [];
   }
   return data;
@@ -76,4 +76,13 @@ function daysBetween(from, to) {
   return Math.round((end - start) / 86400000);
 }
 
-module.exports = { load, save, nextId, normalize, todayIso, round, daysBetween, DEFAULT_SETTINGS, dataFile };
+// 某个日期往后推 n 天（n 可以是 0）
+function addDays(dateStr, n) {
+  const parts = String(dateStr || '').split('-').map(Number);
+  if (parts.length !== 3) return '';
+  const t = Date.UTC(parts[0], parts[1] - 1, parts[2]) + Number(n || 0) * 86400000;
+  const d = new Date(t);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+}
+
+module.exports = { load, save, nextId, normalize, todayIso, round, daysBetween, addDays, DEFAULT_SETTINGS, dataFile };

@@ -25,6 +25,7 @@
   <button type="button" class="tab is-active" data-view="overview">概览</button>
   <button type="button" class="tab" data-view="reservoirs">水库</button>
   <button type="button" class="tab" data-view="water">水位与流量</button>
+  <button type="button" class="tab" data-view="forecast">来水预报</button>
   <button type="button" class="tab" data-view="orders">调度指令</button>
   <button type="button" class="tab" data-view="balance">水量平衡</button>
 </nav>
@@ -310,6 +311,105 @@
           </table>
         </div>
       </section>
+    </section>
+
+    <section class="view" data-view="forecast">
+      <div class="view-head">
+        <div>
+          <h2>来水预报</h2>
+          <p class="view-sub">预报登记走 <code>POST /api/forecasts</code>（同库、同目标日期、同预报时刻覆盖）；时间线把实测与预报排在同一天上，偏差与偏差%直接显示 <code>GET /api/forecasts/timeline</code> 的字段；调度建议来自 <code>GET /api/dispatch/suggestion</code>，只出结论不动数据，前端不重算。</p>
+        </div>
+        <div class="view-actions">
+          <button type="button" class="btn btn-ghost" data-action="reload" data-view="forecast">刷新</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>登记来水预报 <span class="card-sub">接口 <code>POST /api/forecasts</code>，预报时刻、预报人、依据必填</span></h3>
+        <form class="form-grid" id="forecastForm" novalidate>
+          <label class="field">
+            <span>水库</span>
+            <select name="reservoirId" id="forecastFormReservoir"></select>
+            <em class="field-msg" data-field-error="reservoirId" hidden></em>
+          </label>
+          <label class="field">
+            <span>预报目标日期</span>
+            <input type="date" name="date" id="forecastFormDate" />
+            <em class="field-msg" data-field-error="date" hidden></em>
+          </label>
+          <label class="field">
+            <span>预报入库流量（m³/s）</span>
+            <input type="number" step="0.01" name="flow" placeholder="80" />
+            <em class="field-msg" data-field-error="flow" hidden></em>
+          </label>
+          <label class="field">
+            <span>预报日期</span>
+            <input type="date" name="issuedAt" id="forecastFormIssuedAt" />
+            <em class="field-msg" data-field-error="issuedAt" hidden></em>
+          </label>
+          <label class="field">
+            <span>预报时刻</span>
+            <input type="text" name="issuedTime" value="08:00" placeholder="08:00" />
+            <em class="field-msg" data-field-error="issuedTime" hidden></em>
+          </label>
+          <label class="field">
+            <span>预报人</span>
+            <input type="text" name="forecaster" placeholder="市水文中心" />
+            <em class="field-msg" data-field-error="forecaster" hidden></em>
+          </label>
+          <label class="field field-wide">
+            <span>预报依据</span>
+            <input type="text" name="basis" placeholder="数值预报：区间降雨 30~45 毫米" />
+            <em class="field-msg" data-field-error="basis" hidden></em>
+          </label>
+          <label class="field field-wide">
+            <span>备注</span>
+            <input type="text" name="remark" placeholder="可不填" />
+            <em class="field-msg" data-field-error="remark" hidden></em>
+          </label>
+          <div class="field-actions">
+            <button type="submit" class="btn btn-primary">登记预报</button>
+          </div>
+        </form>
+        <div class="form-error" id="forecastFormError" hidden></div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="forecastTimelineTable">
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>水库</th>
+              <th class="num">实测流量</th>
+              <th class="num">预报流量</th>
+              <th class="num">偏差（实测−预报）</th>
+              <th class="num">偏差%</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="forecastTimelineRows"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>调度建议 <span class="card-sub">接口 <code>GET /api/dispatch/suggestion</code>，只读计算、不改数据；同一组预报连算两次结论一致</span></h3>
+        <form class="form-grid" id="suggestionForm" novalidate>
+          <label class="field">
+            <span>水库</span>
+            <select name="reservoirId" id="suggestionReservoir"></select>
+            <em class="field-msg" data-field-error="reservoirId" hidden></em>
+          </label>
+          <div class="field-actions">
+            <button type="submit" class="btn btn-primary">计算建议</button>
+            <button type="button" class="btn" id="suggestionCheckBtn">连算两次核对一致性</button>
+          </div>
+        </form>
+        <div class="form-error" id="suggestionFormError" hidden></div>
+        <div id="suggestionResult" class="suggestion-result">
+          <p class="empty">先选水库，再点「计算建议」。</p>
+        </div>
+      </div>
     </section>
 
     <section class="view" data-view="orders">

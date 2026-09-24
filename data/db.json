@@ -1085,15 +1085,6 @@
       "remark": ""
     },
     {
-      "id": "in-0042",
-      "reservoirId": "res-0001",
-      "date": "2026-09-19",
-      "flow": 69,
-      "type": "实测",
-      "operator": "值班员",
-      "remark": ""
-    },
-    {
       "id": "in-0043",
       "reservoirId": "res-0002",
       "date": "2026-05-01",
@@ -1226,6 +1217,15 @@
       "flow": 42,
       "type": "实测",
       "operator": "值班员",
+      "remark": ""
+    },
+    {
+      "id": "in-0058",
+      "reservoirId": "res-0001",
+      "date": "2026-09-24",
+      "flow": 0,
+      "type": "实测",
+      "operator": "",
       "remark": ""
     }
   ],
@@ -1818,6 +1818,129 @@
           "at": "2026-05-05"
         }
       ]
+    }
+  ],
+  "forecasts": [
+    {
+      "id": "fc-0001",
+      "reservoirId": "res-0001",
+      "date": "2026-09-18",
+      "flow": 65,
+      "issuedAt": "2026-09-17",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "冷空气过境，区间降雨约 25 毫米",
+      "remark": ""
+    },
+    {
+      "id": "fc-0002",
+      "reservoirId": "res-0001",
+      "date": "2026-09-19",
+      "flow": 70,
+      "issuedAt": "2026-09-18",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "冷锋尾部影响，降雨减弱",
+      "remark": ""
+    },
+    {
+      "id": "fc-0003",
+      "reservoirId": "res-0001",
+      "date": "2026-09-20",
+      "flow": 72,
+      "issuedAt": "2026-09-19",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "暖湿气流加强，区间降雨 30~45 毫米",
+      "remark": ""
+    },
+    {
+      "id": "fc-0004",
+      "reservoirId": "res-0001",
+      "date": "2026-09-21",
+      "flow": 78,
+      "issuedAt": "2026-09-20",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "暖湿气流加强，区间降雨 30~45 毫米",
+      "remark": ""
+    },
+    {
+      "id": "fc-0005",
+      "reservoirId": "res-0001",
+      "date": "2026-09-22",
+      "flow": 85,
+      "issuedAt": "2026-09-20",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "暖湿气流加强，区间降雨 30~45 毫米",
+      "remark": ""
+    },
+    {
+      "id": "fc-0006",
+      "reservoirId": "res-0001",
+      "date": "2026-09-23",
+      "flow": 92,
+      "issuedAt": "2026-09-20",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "暖湿气流加强，区间降雨 30~45 毫米",
+      "remark": ""
+    },
+    {
+      "id": "fc-0007",
+      "reservoirId": "res-0001",
+      "date": "2026-09-24",
+      "flow": 70,
+      "issuedAt": "2026-09-20",
+      "issuedTime": "08:00",
+      "forecaster": "市水文中心",
+      "basis": "降雨带南压，来水回落",
+      "remark": ""
+    },
+    {
+      "id": "fc-0008",
+      "reservoirId": "res-0002",
+      "date": "2026-05-15",
+      "flow": 40,
+      "issuedAt": "2026-05-14",
+      "issuedTime": "08:00",
+      "forecaster": "县水文站",
+      "basis": "上游区间降雨约 20 毫米",
+      "remark": ""
+    },
+    {
+      "id": "fc-0009",
+      "reservoirId": "res-0002",
+      "date": "2026-05-17",
+      "flow": 46,
+      "issuedAt": "2026-05-16",
+      "issuedTime": "08:00",
+      "forecaster": "县水文站",
+      "basis": "上游持续小到中雨",
+      "remark": ""
+    },
+    {
+      "id": "fc-0010",
+      "reservoirId": "res-0002",
+      "date": "2026-05-18",
+      "flow": 48,
+      "issuedAt": "2026-05-16",
+      "issuedTime": "08:00",
+      "forecaster": "县水文站",
+      "basis": "上游持续小到中雨",
+      "remark": ""
+    },
+    {
+      "id": "fc-0011",
+      "reservoirId": "res-0001",
+      "date": "2026-09-24",
+      "flow": 0,
+      "issuedAt": "2026-09-24",
+      "issuedTime": "08:00",
+      "forecaster": "12",
+      "basis": "12",
+      "remark": "123"
     }
   ]
 }

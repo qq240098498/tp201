@@ -5,6 +5,8 @@ const reservoirs = require('./reservoirs');
 const records = require('./records');
 const water = require('./water');
 const summary = require('./summary');
+const forecasts = require('./forecasts');
+const dispatch = require('./dispatch');
 
 const router = express.Router();
 
@@ -59,6 +61,17 @@ router.patch('/orders/:id', withData((data, req) => ({ __save: true, __body: rec
 router.post('/orders/:id/copy', withData((data, req) => ({ __save: true, __body: records.copyOrder(data, req.params.id, req.body) })));
 router.post('/orders/:id/attachments', withData((data, req) => ({ __save: true, __body: records.addAttachment(data, req.params.id, req.body || {}) })));
 router.delete('/orders/:id', withData((data, req) => ({ __save: true, __body: records.removeOrder(data, req.params.id) })));
+
+router.get('/forecasts', withData((data, req) => forecasts.listForecasts(data, req.query)));
+router.post('/forecasts', withData((data, req) => ({ __save: true, __body: forecasts.saveForecast(data, req.body || {}) })));
+router.get('/forecasts/timeline', withData((data, req) => forecasts.timeline(data, req.query)));
+router.delete('/forecasts/:id', withData((data, req) => ({ __save: true, __body: forecasts.removeForecast(data, req.params.id) })));
+
+router.get('/dispatch/suggestion', withData((data, req) => {
+  const { reservoirId } = req.query;
+  if (!reservoirId) throw new AppError(400, 'INVALID_PAYLOAD', '请先选一个水库');
+  return dispatch.suggestion(data, reservoirId);
+}));
 
 router.get('/balance', withData((data, req) => {
   const { reservoirId, from, to } = req.query;
